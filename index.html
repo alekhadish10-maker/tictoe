@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Ultimate Tic Tac Toe Pro</title>
+
+<style>
+:root{
+--bg:#f2f2f7;
+--card:#ffffff;
+--text:#000;
+--accent:#007aff;
+}
+
+@media (prefers-color-scheme: dark){
+:root{
+--bg:#000;
+--card:#1c1c1e;
+--text:#fff;
+--accent:#0a84ff;
+}
+}
+
+body{
+margin:0;
+font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif;
+background:var(--bg);
+color:var(--text);
+display:flex;
+justify-content:center;
+align-items:center;
+height:100vh;
+transition:0.4s;
+}
+
+.app{
+width:380px;
+background:var(--card);
+border-radius:30px;
+box-shadow:0 20px 60px rgba(0,0,0,0.25);
+padding:20px;
+text-align:center;
+position:relative;
+}
+
+h1{margin:5px 0;}
+
+.controls{
+display:flex;
+justify-content:space-between;
+margin-bottom:10px;
+flex-wrap:wrap;
+gap:5px;
+}
+
+select,button{
+border:none;
+padding:6px 10px;
+border-radius:14px;
+background:#e5e5ea;
+cursor:pointer;
+font-weight:500;
+}
+
+button{
+background:var(--accent);
+color:white;
+}
+
+.board{
+display:grid;
+grid-template-columns:repeat(3,1fr);
+gap:10px;
+margin:15px 0;
+position:relative;
+}
+
+.cell{
+background:#d1d1d6;
+aspect-ratio:1;
+font-size:2rem;
+display:flex;
+align-items:center;
+justify-content:center;
+border-radius:18px;
+cursor:pointer;
+}
+
+.scoreboard{
+display:flex;
+justify-content:space-around;
+font-size:0.9rem;
+margin-top:10px;
+}
+
+.line{
+position:absolute;
+height:4px;
+background:var(--accent);
+border-radius:3px;
+transform-origin:left center;
+animation:draw 0.4s ease forwards;
+}
+
+@keyframes draw{
+from{transform:scaleX(0);}
+to{transform:scaleX(1);}
+}
+
+.popup{
+position:fixed;
+top:50%;
+left:50%;
+transform:translate(-50%,-50%) scale(0);
+background:white;
+color:black;
+padding:20px;
+border-radius:20px;
+box-shadow:0 10px 30px rgba(0,0,0,0.4);
+transition:0.3s;
+z-index:10;
+}
+
+.popup.show{transform:translate(-50%,-50%) scale(1);}
+</style>
+</head>
+
+<body>
+
+<div class="app">
+<h1>Tic Tac Toe <span id="proBadge"></span></h1>
+
+<div class="controls">
+<select id="mode">
+<option value="ai">AI Mode</option>
+<option value="online">Online Mode</option>
+</select>
+
+<select id="difficulty">
+<option value="easy">Easy</option>
+<option value="medium">Medium</option>
+<option value="hard">Impossible</option>
+</select>
+
+<button id="restart">Restart</button>
+<button id="buyPro">Unlock Pro $4.99</button>
+</div>
+
+<div id="status">Your Turn</div>
+
+<div class="board" id="board">
+<div class="cell" data-index="0"></div>
+<div class="cell" data-index="1"></div>
+<div class="cell" data-index="2"></div>
+<div class="cell" data-index="3"></div>
+<div class="cell" data-index="4"></div>
+<div class="cell" data-index="5"></div>
+<div class="cell" data-index="6"></div>
+<div class="cell" data-index="7"></div>
+<div class="cell" data-index="8"></div>
+</div>
+
+<div class="scoreboard">
+<div>Wins: <span id="wins">0</span></div>
+<div>Losses: <span id="losses">0</span></div>
+<div>Draws: <span id="draws">0</span></div>
+</div>
+</div>
+
+<div class="popup" id="popup"></div>
+
+<script>
+let board=["","","","","","","","",""];
+let human="X", ai="O";
+let running=true;
+let wins=+localStorage.getItem("wins")||0;
+let losses=+localStorage.getItem("losses")||0;
+let draws=+localStorage.getItem("draws")||0;
+let firstMoves=JSON.parse(localStorage.getItem("firstMoves"))||{};
+let proUnlocked=localStorage.getItem("pro")==="true";
+
+const cells=document.querySelectorAll(".cell");
+const statusText=document.getElementById("status");
+const restartBtn=document.getElementById("restart");
+const difficulty=document.getElementById("difficulty");
+const modeSelect=document.getElementById("mode");
+const popup=document.getElementById("popup");
+
+document.getElementById("wins").textContent=wins;
+document.getElementById("losses").textContent=losses;
+document.getElementById("draws").textContent=draws;
+
+if(proUnlocked) enablePro();
+
+document.getElementById("buyPro").onclick=()=>{
+localStorage.setItem("pro","true");
+enablePro();
+showPopup("Pro Unlocked 😂");
+};
+
+function enablePro(){
+proUnlocked=true;
+document.getElementById("proBadge").textContent="👑 PRO";
+}
+
+cells.forEach(c=>c.addEventListener("click",playerMove));
+restartBtn.onclick=reset;
+
+function playerMove(){
+let i=this.dataset.index;
+if(board[i]!==""||!running)return;
+
+if(board.every(x=>x==="")){
+firstMoves[i]=(firstMoves[i]||0)+1;
+localStorage.setItem("firstMoves",JSON.stringify(firstMoves));
+}
+
+move(i,human);
+
+if(checkWin(human)){wins++;finish("You Win 🎉");return;}
+if(!board.includes("")){draws++;finish("Draw");return;}
+
+if(modeSelect.value==="ai"){
+setTimeout(aiTurn,300);
+}else{
+syncOnline();
+}
+}
+
+function aiTurn(){
+let moveIndex;
+
+if(difficulty.value==="easy") moveIndex=randomMove();
+else if(difficulty.value==="medium") moveIndex=Math.random()<0.5?smartMove():randomMove();
+else moveIndex=minimax(board,ai).index;
+
+move(moveIndex,ai);
+
+if(checkWin(ai)){losses++;finish("AI Wins 🤖",proUnlocked?"I own you.":"Too easy.");return;}
+if(!board.includes("")){draws++;finish("Draw");return;}
+
+statusText.textContent="Your Turn";
+}
+
+function move(i,p){
+board[i]=p;
+cells[i].textContent=p;
+}
+
+function finish(msg,trash=""){
+running=false;
+statusText.textContent=msg;
+saveScores();
+if(trash) showPopup(trash);
+playSound(msg.includes("Win"));
+}
+
+function saveScores(){
+localStorage.setItem("wins",wins);
+localStorage.setItem("losses",losses);
+localStorage.setItem("draws",draws);
+document.getElementById("wins").textContent=wins;
+document.getElementById("losses").textContent=losses;
+document.getElementById("draws").textContent=draws;
+}
+
+function reset(){
+board=["","","","","","","","",""];
+cells.forEach(c=>c.textContent="");
+running=true;
+statusText.textContent="Your Turn";
+}
+
+function randomMove(){
+let empty=board.map((v,i)=>v===""?i:null).filter(v=>v!==null);
+return empty[Math.floor(Math.random()*empty.length)];
+}
+
+function smartMove(){
+let common=Object.entries(firstMoves).sort((a,b)=>b[1]-a[1])[0];
+if(common && board[common[0]]==="") return common[0];
+return randomMove();
+}
+
+function minimax(newBoard,player){
+let avail=newBoard.map((v,i)=>v===""?i:null).filter(v=>v!==null);
+
+if(checkWin(ai,newBoard)) return {score:10};
+if(checkWin(human,newBoard)) return {score:-10};
+if(avail.length===0) return {score:0};
+
+let moves=[];
+for(let i of avail){
+let move={};
+move.index=i;
+newBoard[i]=player;
+let result=minimax(newBoard,player===ai?human:ai);
+move.score=result.score;
+newBoard[i]="";
+moves.push(move);
+}
+
+let bestMove;
+if(player===ai){
+let bestScore=-Infinity;
+for(let m of moves){if(m.score>bestScore){bestScore=m.score;bestMove=m;}}
+}else{
+let bestScore=Infinity;
+for(let m of moves){if(m.score<bestScore){bestScore=m.score;bestMove=m;}}
+}
+return bestMove;
+}
+
+function checkWin(player,b=board){
+return [
+[0,1,2],[3,4,5],[6,7,8],
+[0,3,6],[1,4,7],[2,5,8],
+[0,4,8],[2,4,6]
+].some(c=>c.every(i=>b[i]===player));
+}
+
+/* ONLINE MODE SIMULATION */
+function syncOnline(){
+localStorage.setItem("onlineBoard",JSON.stringify(board));
+window.addEventListener("storage",()=>{
+let data=JSON.parse(localStorage.getItem("onlineBoard"));
+if(data){board=data;updateBoard();}
+});
+}
+
+function updateBoard(){
+cells.forEach((c,i)=>c.textContent=board[i]);
+}
+
+/* SOUND */
+function playSound(win){
+let ctx=new (window.AudioContext||window.webkitAudioContext)();
+let osc=ctx.createOscillator();
+let gain=ctx.createGain();
+osc.type=win?"triangle":"sawtooth";
+osc.frequency.setValueAtTime(win?600:180,ctx.currentTime);
+gain.gain.setValueAtTime(0.2,ctx.currentTime);
+osc.connect(gain);
+gain.connect(ctx.destination);
+osc.start();
+osc.stop(ctx.currentTime+0.3);
+}
+
+function showPopup(text){
+popup.textContent=text;
+popup.classList.add("show");
+setTimeout(()=>popup.classList.remove("show"),3000);
+}
+</script>
+
+</body>
+</html>
